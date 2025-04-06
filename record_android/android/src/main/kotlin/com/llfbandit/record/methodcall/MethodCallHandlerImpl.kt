@@ -1,6 +1,7 @@
 package com.llfbandit.record.methodcall
 
 import android.content.Context
+import android.content.Intent
 import android.media.MediaRecorder
 import android.os.Build
 import com.llfbandit.record.Utils
@@ -8,6 +9,7 @@ import com.llfbandit.record.permission.PermissionManager
 import com.llfbandit.record.record.RecordConfig
 import com.llfbandit.record.record.device.DeviceUtils
 import com.llfbandit.record.record.format.AudioFormats
+import com.llfbandit.record.service.AudioRecordingService
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -23,12 +25,10 @@ class MethodCallHandlerImpl(
 ) : MethodCallHandler {
     private val recorders = ConcurrentHashMap<String, RecorderWrapper>()
 
-
     fun dispose() {
         for (entry in recorders.entries) {
             disposeRecorder(entry.value, entry.key)
         }
-
         recorders.clear()
     }
 
@@ -63,6 +63,10 @@ class MethodCallHandlerImpl(
             "start" -> {
                 try {
                     val config = getRecordConfig(call)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                        val serviceIntent = Intent(appContext, AudioRecordingService::class.java)
+                        appContext.startForegroundService(serviceIntent)
+                    }
                     recorder.startRecordingToFile(config, result)
                 } catch (e: IOException) {
                     result.error("record", "Cannot create recording configuration.", e.message)
@@ -72,23 +76,47 @@ class MethodCallHandlerImpl(
             "startStream" -> {
                 try {
                     val config = getRecordConfig(call)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                        val serviceIntent = Intent(appContext, AudioRecordingService::class.java)
+                        appContext.startForegroundService(serviceIntent)
+                    }
                     recorder.startRecordingToStream(config, result)
                 } catch (e: IOException) {
                     result.error("record", "Cannot create recording configuration.", e.message)
                 }
             }
 
-            "stop" -> recorder.stop(result)
+            "stop" -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    val serviceIntent = Intent(appContext, AudioRecordingService::class.java)
+                    serviceIntent.action = AudioRecordingService.ACTION_STOP
+                    appContext.startService(serviceIntent)
+                }
+                recorder.stop(result)
+            }
+
             "pause" -> recorder.pause(result)
             "resume" -> recorder.resume(result)
             "isPaused" -> recorder.isPaused(result)
             "isRecording" -> recorder.isRecording(result)
-            "cancel" -> recorder.cancel(result)
+            "cancel" -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    val serviceIntent = Intent(appContext, AudioRecordingService::class.java)
+                    serviceIntent.action = AudioRecordingService.ACTION_STOP
+                    appContext.startService(serviceIntent)
+                }
+                recorder.cancel(result)
+            }
             "hasPermission" -> permissionManager.hasPermission(result::success)
             "getAmplitude" -> recorder.getAmplitude(result)
             "listInputDevices" -> result.success(DeviceUtils.listInputDevicesAsMap(appContext))
 
             "dispose" -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    val serviceIntent = Intent(appContext, AudioRecordingService::class.java)
+                    serviceIntent.action = AudioRecordingService.ACTION_STOP
+                    appContext.startService(serviceIntent)
+                }
                 disposeRecorder(recorder, recorderId)
                 result.success(null)
             }
